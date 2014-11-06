@@ -55,7 +55,7 @@ qq.AjaxRequestor = function (o) {
     function containsNonSimpleHeaders(headers) {
         var containsNonSimple = false;
 
-        qq.each(containsNonSimple, function(idx, header) {
+        qq.each(headers, function(idx, header) {
             if (qq.indexOf(["Accept", "Accept-Language", "Content-Language", "Content-Type"], header) < 0) {
                 containsNonSimple = true;
                 return false;
