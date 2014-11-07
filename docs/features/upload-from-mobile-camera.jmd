@@ -1,5 +1,8 @@
 {% extends "_templates/base.html" %}
 {% set page_title = "Upload From Mobile Camera" %}
+{% block sidebar %}
+{{ api_links(options=['camera']) }}
+{% endblock %}
 {% block content %}
 {% markdown %}
 
@@ -10,12 +13,6 @@ alert("While uploads are possible from all mobile cameras, this option is releva
 Note that due to limitations related to camera access in iOS, setting this to true will prevent you from selecting
 multiple files at once.")
 }}
-
-{{ options_table(
-    (
-        ("camera", "`Boolean`", "`false`", "Enable or disable camera access on iOS."),
-    )
-) }}
 
 [For more information, see the associated blog post](http://blog.fineuploader.com/2013/05/09/upload-directly-via-a-camera-on-mobile-devices/)
 

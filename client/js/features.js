@@ -1,5 +1,9 @@
-qq.supportedFeatures = (function () {
+/* globals qq */
+qq.supportedFeatures = (function() {
+    "use strict";
+
     var supportsUploading,
+        supportsUploadingBlobs,
         supportsAjaxFileUploading,
         supportsFolderDrop,
         supportsChunking,
@@ -8,16 +12,18 @@ qq.supportedFeatures = (function () {
         supportsUploadCors,
         supportsDeleteFileXdr,
         supportsDeleteFileCorsXhr,
-        supportsDeleteFileCors;
-
+        supportsDeleteFileCors,
+        supportsFolderSelection,
+        supportsImagePreviews,
+        supportsUploadProgress;
 
     function testSupportsFileInputElement() {
         var supported = true,
             tempInput;
 
         try {
-            tempInput = document.createElement('input');
-            tempInput.type = 'file';
+            tempInput = document.createElement("input");
+            tempInput.type = "file";
             qq(tempInput).hide();
 
             if (tempInput.disabled) {
@@ -33,13 +39,13 @@ qq.supportedFeatures = (function () {
 
     //only way to test for Filesystem API support since webkit does not expose the DataTransfer interface
     function isChrome21OrHigher() {
-        return qq.chrome() &&
+        return (qq.chrome() || qq.opera()) &&
             navigator.userAgent.match(/Chrome\/[2][1-9]|Chrome\/[3-9][0-9]/) !== undefined;
     }
 
     //only way to test for complete Clipboard API support at this time
     function isChrome14OrHigher() {
-        return qq.chrome() &&
+        return (qq.chrome() || qq.opera()) &&
             navigator.userAgent.match(/Chrome\/[1][4-9]|Chrome\/[2-9][0-9]/) !== undefined;
     }
 
@@ -70,16 +76,22 @@ qq.supportedFeatures = (function () {
         return isXdrSupported();
     }
 
+    function isFolderSelectionSupported() {
+        // We know that folder selection is only supported in Chrome via this proprietary attribute for now
+        return document.createElement("input").webkitdirectory !== undefined;
+    }
 
     supportsUploading = testSupportsFileInputElement();
 
     supportsAjaxFileUploading = supportsUploading && qq.isXhrUploadSupported();
 
+    supportsUploadingBlobs = supportsAjaxFileUploading && !qq.androidStock();
+
     supportsFolderDrop = supportsAjaxFileUploading && isChrome21OrHigher();
 
     supportsChunking = supportsAjaxFileUploading && qq.isFileChunkingSupported();
 
-    supportsResume = supportsAjaxFileUploading && supportsChunking && qq.areCookiesEnabled();
+    supportsResume = supportsAjaxFileUploading && supportsChunking && !!window.localStorage;
 
     supportsUploadViaPaste = supportsAjaxFileUploading && isChrome14OrHigher();
 
@@ -91,24 +103,42 @@ qq.supportedFeatures = (function () {
 
     supportsDeleteFileCors = isCrossOriginAjaxSupported();
 
+    supportsFolderSelection = isFolderSelectionSupported();
+
+    supportsImagePreviews = supportsAjaxFileUploading && window.FileReader !== undefined;
+
+    supportsUploadProgress = (function() {
+        if (supportsAjaxFileUploading) {
+            return !qq.androidStock() && !qq.iosChrome();
+        }
+        return false;
+    }());
 
     return {
-        uploading: supportsUploading,
         ajaxUploading: supportsAjaxFileUploading,
+        blobUploading: supportsUploadingBlobs,
+        canDetermineSize: supportsAjaxFileUploading,
+        chunking: supportsChunking,
+        deleteFileCors: supportsDeleteFileCors,
+        deleteFileCorsXdr: supportsDeleteFileXdr, //NOTE: will also return true in IE10, where XDR is also supported
+        deleteFileCorsXhr: supportsDeleteFileCorsXhr,
         fileDrop: supportsAjaxFileUploading, //NOTE: will also return true for touch-only devices.  It's not currently possible to accurately test for touch-only devices
         folderDrop: supportsFolderDrop,
-        chunking: supportsChunking,
+        folderSelection: supportsFolderSelection,
+        imagePreviews: supportsImagePreviews,
+        imageValidation: supportsImagePreviews,
+        itemSizeValidation: supportsAjaxFileUploading,
+        pause: supportsChunking,
+        progressBar: supportsUploadProgress,
         resume: supportsResume,
+        scaling: supportsImagePreviews && supportsUploadingBlobs,
+        tiffPreviews: qq.safari(), // Not the best solution, but simple and probably accurate enough (for now)
+        unlimitedScaledImageSize: !qq.ios(), // false simply indicates that there is some known limit
+        uploading: supportsUploading,
+        uploadCors: supportsUploadCors,
         uploadCustomHeaders: supportsAjaxFileUploading,
         uploadNonMultipart: supportsAjaxFileUploading,
-        itemSizeValidation: supportsAjaxFileUploading,
-        uploadViaPaste: supportsUploadViaPaste,
-        progressBar: supportsAjaxFileUploading,
-        uploadCors: supportsUploadCors,
-        deleteFileCorsXhr: supportsDeleteFileCorsXhr,
-        deleteFileCorsXdr: supportsDeleteFileXdr, //NOTE: will also return true in IE10, where XDR is also supported
-        deleteFileCors: supportsDeleteFileCors,
-        canDetermineSize: supportsAjaxFileUploading
-    }
+        uploadViaPaste: supportsUploadViaPaste
+    };
 
 }());

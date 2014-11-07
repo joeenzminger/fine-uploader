@@ -1,22 +1,25 @@
+/*globals qq */
 qq.UploadData = function(uploaderProxy) {
+    "use strict";
+
     var data = [],
-        byId = {},
         byUuid = {},
         byStatus = {},
-        api;
+        byProxyGroupId = {},
+        byBatchId = {};
 
-    function getDataByIds(ids) {
-        if (qq.isArray(ids)) {
+    function getDataByIds(idOrIds) {
+        if (qq.isArray(idOrIds)) {
             var entries = [];
 
-            qq.each(ids, function(idx, id) {
-                entries.push(data[byId[id]]);
+            qq.each(idOrIds, function(idx, id) {
+                entries.push(data[id]);
             });
 
             return entries;
         }
 
-        return data[byId[ids]];
+        return data[idOrIds];
     }
 
     function getDataByUuids(uuids) {
@@ -50,32 +53,60 @@ qq.UploadData = function(uploaderProxy) {
         return statusResults;
     }
 
-    api = {
-        added: function(id) {
-            var uuid = uploaderProxy.getUuid(id),
-                name = uploaderProxy.getName(id),
-                size = uploaderProxy.getSize(id),
-                status = qq.status.SUBMITTING;
+    qq.extend(this, {
+        /**
+         * Adds a new file to the data cache for tracking purposes.
+         *
+         * @param spec Data that describes this file.  Possible properties are:
+         *
+         * - uuid: Initial UUID for this file.
+         * - name: Initial name of this file.
+         * - size: Size of this file, omit if this cannot be determined
+         * - status: Initial `qq.status` for this file.  Omit for `qq.status.SUBMITTING`.
+         * - batchId: ID of the batch this file belongs to
+         * - proxyGroupId: ID of the proxy group associated with this file
+         *
+         * @returns {number} Internal ID for this file.
+         */
+        addFile: function(spec) {
+            var status = spec.status || qq.status.SUBMITTING,
+                id = data.push({
+                    name: spec.name,
+                    originalName: spec.name,
+                    uuid: spec.uuid,
+                    size: spec.size || -1,
+                    status: status
+                }) - 1;
 
-            var index = data.push({
-                id: id,
-                name: name,
-                originalName: name,
-                uuid: uuid,
-                size: size,
-                status: status
-            }) - 1;
+            if (spec.batchId) {
+                data[id].batchId = spec.batchId;
 
-            byId[id] = index;
+                if (byBatchId[spec.batchId] === undefined) {
+                    byBatchId[spec.batchId] = [];
+                }
+                byBatchId[spec.batchId].push(id);
+            }
 
-            byUuid[uuid] = index;
+            if (spec.proxyGroupId) {
+                data[id].proxyGroupId = spec.proxyGroupId;
+
+                if (byProxyGroupId[spec.proxyGroupId] === undefined) {
+                    byProxyGroupId[spec.proxyGroupId] = [];
+                }
+                byProxyGroupId[spec.proxyGroupId].push(id);
+            }
+
+            data[id].id = id;
+            byUuid[spec.uuid] = id;
 
             if (byStatus[status] === undefined) {
                 byStatus[status] = [];
             }
-            byStatus[status].push(index);
+            byStatus[status].push(id);
 
-            uploaderProxy.onStatusChange(id, undefined, status);
+            uploaderProxy.onStatusChange(id, null, status);
+
+            return id;
         },
 
         retrieve: function(optionalFilter) {
@@ -99,45 +130,63 @@ qq.UploadData = function(uploaderProxy) {
 
         reset: function() {
             data = [];
-            byId = {};
             byUuid = {};
             byStatus = {};
+            byBatchId = {};
         },
 
         setStatus: function(id, newStatus) {
-            var dataIndex = byId[id],
-                oldStatus = data[dataIndex].status,
-                byStatusOldStatusIndex = qq.indexOf(byStatus[oldStatus], dataIndex);
+            var oldStatus = data[id].status,
+                byStatusOldStatusIndex = qq.indexOf(byStatus[oldStatus], id);
 
             byStatus[oldStatus].splice(byStatusOldStatusIndex, 1);
 
-            data[dataIndex].status = newStatus;
+            data[id].status = newStatus;
 
             if (byStatus[newStatus] === undefined) {
                 byStatus[newStatus] = [];
             }
-            byStatus[newStatus].push(dataIndex);
+            byStatus[newStatus].push(id);
 
             uploaderProxy.onStatusChange(id, oldStatus, newStatus);
         },
 
         uuidChanged: function(id, newUuid) {
-            var dataIndex = byId[id],
-                oldUuid = data[dataIndex].uuid;
+            var oldUuid = data[id].uuid;
 
-            data[dataIndex].uuid = newUuid;
-            byUuid[newUuid] = dataIndex;
+            data[id].uuid = newUuid;
+            byUuid[newUuid] = id;
             delete byUuid[oldUuid];
         },
 
-        nameChanged: function(id, newName) {
-            var dataIndex = byId[id];
+        updateName: function(id, newName) {
+            data[id].name = newName;
+        },
 
-            data[dataIndex].name = newName;
+        updateSize: function(id, newSize) {
+            data[id].size = newSize;
+        },
+
+        // Only applicable if this file has a parent that we may want to reference later.
+        setParentId: function(targetId, parentId) {
+            data[targetId].parentId = parentId;
+        },
+
+        getIdsInProxyGroup: function(id) {
+            var proxyGroupId = data[id].proxyGroupId;
+
+            if (proxyGroupId) {
+                return byProxyGroupId[proxyGroupId];
+            }
+            return [];
+        },
+
+        getIdsInBatch: function(id) {
+            var batchId = data[id].batchId;
+
+            return byBatchId[batchId];
         }
-    };
-
-    return api;
+    });
 };
 
 qq.status = {
@@ -146,6 +195,7 @@ qq.status = {
     REJECTED: "rejected",
     QUEUED: "queued",
     CANCELED: "canceled",
+    PAUSED: "paused",
     UPLOADING: "uploading",
     UPLOAD_RETRYING: "retrying upload",
     UPLOAD_SUCCESSFUL: "upload successful",

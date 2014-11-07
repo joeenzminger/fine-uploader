@@ -14,8 +14,8 @@
 qq.UploadButton = function(o) {
     "use strict";
 
-    var input,
-       // Used to detach all event handlers created at once for this instance
+    var self = this,
+
         disposeSupport = new qq.DisposeSupport(),
 
         options = {
@@ -26,31 +26,42 @@ qq.UploadButton = function(o) {
             multiple: false,
 
             // Corresponds to the `accept` attribute on the associated `<input type="file">`
-
             acceptFiles: null,
 
+            // A true value allows folders to be selected, if supported by the UA
+            folders: false,
+
             // `name` attribute of `<input type="file">`
-            name: 'qqfile',
+            name: "qqfile",
 
             // Called when the browser invokes the onchange handler on the `<input type="file">`
             onChange: function(input) {},
 
-            // **This option will be removed** in the future as the :hover CSS pseudo-class is available on all supported browsers
-            hoverClass: 'qq-upload-button-hover',
+            ios8BrowserCrashWorkaround: true,
 
-            focusClass: 'qq-upload-button-focus'
-        };
+            // **This option will be removed** in the future as the :hover CSS pseudo-class is available on all supported browsers
+            hoverClass: "qq-upload-button-hover",
+
+            focusClass: "qq-upload-button-focus"
+        },
+        input, buttonId;
 
     // Overrides any of the default option values with any option values passed in during construction.
     qq.extend(options, o);
 
+    buttonId = qq.getUniqueId();
 
     // Embed an opaque `<input type="file">` element as a child of `options.element`.
     function createInput() {
         var input = document.createElement("input");
 
-        if (options.multiple){
-            input.setAttribute("multiple", "multiple");
+        input.setAttribute(qq.UploadButton.BUTTON_ID_ATTR_NAME, buttonId);
+
+        self.setMultiple(options.multiple, input);
+
+        if (options.folders && qq.supportedFeatures.folderSelection) {
+            // selecting directories is only possible in Chrome now, via a vendor-specific prefixed attribute
+            input.setAttribute("webkitdirectory", "");
         }
 
         if (options.acceptFiles) {
@@ -61,39 +72,50 @@ qq.UploadButton = function(o) {
         input.setAttribute("name", options.name);
 
         qq(input).css({
-            position: 'absolute',
+            position: "absolute",
             // in Opera only 'browse' button
             // is clickable and it is located at
             // the right side of the input
             right: 0,
             top: 0,
-            fontFamily: 'Arial',
-            // 4 persons reported this, the max values that worked for them were 243, 236, 236, 118
-            fontSize: '118px',
+            fontFamily: "Arial",
+            // It's especially important to make this an arbitrarily large value
+            // to ensure the rendered input button in IE takes up the entire
+            // space of the container element.  Otherwise, the left side of the
+            // button will require a double-click to invoke the file chooser.
+            // In other browsers, this might cause other issues, so a large font-size
+            // is only used in IE.  There is a bug in IE8 where the opacity style is  ignored
+            // in some cases when the font-size is large.  So, this workaround is not applied
+            // to IE8.
+            fontSize: qq.ie() && !qq.ie8() ? "3500px" : "118px",
             margin: 0,
             padding: 0,
-            cursor: 'pointer',
+            cursor: "pointer",
             opacity: 0
         });
 
+        // Setting the file input's height to 100% in IE7 causes
+        // most of the visible button to be unclickable.
+        !qq.ie7() && qq(input).css({height: "100%"});
+
         options.element.appendChild(input);
 
-        disposeSupport.attach(input, 'change', function(){
+        disposeSupport.attach(input, "change", function() {
             options.onChange(input);
         });
 
         // **These event handlers will be removed** in the future as the :hover CSS pseudo-class is available on all supported browsers
-        disposeSupport.attach(input, 'mouseover', function(){
+        disposeSupport.attach(input, "mouseover", function() {
             qq(options.element).addClass(options.hoverClass);
         });
-        disposeSupport.attach(input, 'mouseout', function(){
+        disposeSupport.attach(input, "mouseout", function() {
             qq(options.element).removeClass(options.hoverClass);
         });
 
-        disposeSupport.attach(input, 'focus', function(){
+        disposeSupport.attach(input, "focus", function() {
             qq(options.element).addClass(options.focusClass);
         });
-        disposeSupport.attach(input, 'blur', function(){
+        disposeSupport.attach(input, "blur", function() {
             qq(options.element).removeClass(options.focusClass);
         });
 
@@ -101,7 +123,7 @@ qq.UploadButton = function(o) {
         // which is unacceptable in our case, disable keyboard access
         if (window.attachEvent) {
             // it is IE or Opera
-            input.setAttribute('tabIndex', "-1");
+            input.setAttribute("tabIndex", "-1");
         }
 
         return input;
@@ -109,28 +131,60 @@ qq.UploadButton = function(o) {
 
     // Make button suitable container for input
     qq(options.element).css({
-        position: 'relative',
-        overflow: 'hidden',
+        position: "relative",
+        overflow: "hidden",
         // Make sure browse button is in the right side in Internet Explorer
-        direction: 'ltr'
+        direction: "ltr"
     });
 
-    input = createInput();
-
-
     // Exposed API
-    return {
-        getInput: function(){
+    qq.extend(this, {
+        getInput: function() {
             return input;
         },
 
-        reset: function(){
-            if (input.parentNode){
+        getButtonId: function() {
+            return buttonId;
+        },
+
+        setMultiple: function(isMultiple, optInput) {
+            var input = optInput || this.getInput();
+
+            // Temporary workaround for bug in in iOS8 UIWebView that causes the browser to crash
+            // before the file chooser appears if the file input doesn't contain a multiple attribute.
+            // See #1283.
+            if (options.ios8BrowserCrashWorkaround && qq.ios8() && (qq.iosChrome() || qq.iosSafariWebView())) {
+                input.setAttribute("multiple", "");
+            }
+
+            else {
+                if (isMultiple) {
+                    input.setAttribute("multiple", "");
+                }
+                else {
+                    input.removeAttribute("multiple");
+                }
+            }
+        },
+
+        setAcceptFiles: function(acceptFiles) {
+            if (acceptFiles !== options.acceptFiles) {
+                input.setAttribute("accept", acceptFiles);
+            }
+        },
+
+        reset: function() {
+            if (input.parentNode) {
                 qq(input).remove();
             }
 
             qq(options.element).removeClass(options.focusClass);
+            input = null;
             input = createInput();
         }
-    };
+    });
+
+    input = createInput();
 };
+
+qq.UploadButton.BUTTON_ID_ATTR_NAME = "qq-button-id";

@@ -1,15 +1,14 @@
-/** Generic class for sending non-upload ajax requests and handling the associated responses **/
 /*globals qq, XMLHttpRequest*/
-qq.DeleteFileAjaxRequestor = function(o) {
+qq.DeleteFileAjaxRequester = function(o) {
     "use strict";
 
-    var requestor,
+    var requester,
         options = {
             method: "DELETE",
             uuidParamName: "qquuid",
             endpointStore: {},
             maxConnections: 3,
-            customHeaders: {},
+            customHeaders: function(id) {return {};},
             paramsStore: {},
             demoMode: false,
             cors: {
@@ -26,42 +25,49 @@ qq.DeleteFileAjaxRequestor = function(o) {
     function getMandatedParams() {
         if (options.method.toUpperCase() === "POST") {
             return {
-                "_method": "DELETE"
+                _method: "DELETE"
             };
         }
 
         return {};
     }
 
-    requestor = new qq.AjaxRequestor({
+    requester = qq.extend(this, new qq.AjaxRequester({
+        acceptHeader: "application/json",
         validMethods: ["POST", "DELETE"],
         method: options.method,
         endpointStore: options.endpointStore,
         paramsStore: options.paramsStore,
         mandatedParams: getMandatedParams(),
         maxConnections: options.maxConnections,
-        customHeaders: options.customHeaders,
+        customHeaders: function(id) {
+            return options.customHeaders.get(id);
+        },
         demoMode: options.demoMode,
         log: options.log,
         onSend: options.onDelete,
         onComplete: options.onDeleteComplete,
         cors: options.cors
-    });
+    }));
 
-
-    return {
+    qq.extend(this, {
         sendDelete: function(id, uuid, additionalMandatedParams) {
             var additionalOptions = additionalMandatedParams || {};
 
             options.log("Submitting delete file request for " + id);
 
-            if (requestor.getMethod() === "DELETE") {
-                requestor.send(id, uuid, additionalOptions);
+            if (options.method === "DELETE") {
+                requester.initTransport(id)
+                    .withPath(uuid)
+                    .withParams(additionalOptions)
+                    .send();
             }
             else {
                 additionalOptions[options.uuidParamName] = uuid;
-                requestor.send(id, null, additionalOptions);
+                requester.initTransport(id)
+                    .withParams(additionalOptions)
+                    .send();
             }
         }
-    };
+    });
 };

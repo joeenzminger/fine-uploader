@@ -46,6 +46,7 @@
 
         {% include "_templates/navbar.html" %}
 
+
         {% block pre_container %}{% endblock %}
         <div class="container-fluid">
             <div class='row-fluid'>
@@ -55,7 +56,9 @@
                 {% block sidebar %}{% endblock %}
                 </div>
 
-                <div class="span10 content">
+                <div class="span9 content">
+                    <span class="pull-right" style="opacity: .7; padding: 1px; margin-right: 5px;"><p>{{ PKG['version'] }}</p></span>
+
                 {% block pre_content %}{% endblock %}
 
                 {% block content %}{% endblock %}
@@ -65,7 +68,6 @@
 
             {% endblock %}
             </div>
-            <hr>
             {% include "_templates/footer.html" %}
         </div> <!-- /container -->
         {% block post_container %}{% endblock %}
@@ -108,6 +110,8 @@
             <noscript><p><img alt="Clicky" width="1" height="1" src="//in.getclicky.com/100643192ns.gif" /></p></noscript>
             {% endblock %}
         {% endblock %}
+
+        <script src="{{ ASSETS }}/js/main.js"></script>
 
         {% block js_footer %}
         {# Add your javascript here #}

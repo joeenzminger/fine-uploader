@@ -18,7 +18,7 @@ qq.PasteSupport = function(o) {
     }
 
     function registerPasteHandler() {
-        qq(options.targetElement).attach("paste", function(event) {
+        detachPasteHandler = qq(options.targetElement).attach("paste", function(event) {
             var clipboardData = event.clipboardData;
 
             if (clipboardData) {
@@ -41,9 +41,9 @@ qq.PasteSupport = function(o) {
     qq.extend(options, o);
     registerPasteHandler();
 
-    return {
+    qq.extend(this, {
         reset: function() {
             unregisterPasteHandler();
         }
-    };
+    });
 };

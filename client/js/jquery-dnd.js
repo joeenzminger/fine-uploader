@@ -4,7 +4,7 @@
     var rootDataKey = "fineUploaderDnd",
         $el;
 
-    function init (options) {
+    function init(options) {
         if (!options) {
             options = {};
         }
@@ -15,7 +15,7 @@
         dnd(new qq.DragAndDrop(xformedOpts));
 
         return $el;
-    };
+    }
 
     function dataStore(key, val) {
         var data = $el.data(rootDataKey);
@@ -33,15 +33,14 @@
             }
             return data[key];
         }
-    };
+    }
 
     function dnd(instanceToStore) {
-        return dataStore('dndInstance', instanceToStore);
-    };
+        return dataStore("dndInstance", instanceToStore);
+    }
 
     function addCallbacks(transformedOpts) {
-        var callbacks = transformedOpts.callbacks = {},
-            dndInst = new qq.FineUploaderBasic();
+        var callbacks = transformedOpts.callbacks = {};
 
         $.each(new qq.DragAndDrop.callbacks(), function(prop, func) {
             var name = prop,
@@ -56,7 +55,7 @@
                 return jqueryHandlerResult;
             };
         });
-    };
+    }
 
     //transform jQuery objects into HTMLElements, and pass along all other option properties
     function transformVariables(source, dest) {
@@ -97,19 +96,19 @@
         if (dest === undefined) {
             return xformed;
         }
-    };
+    }
 
     function isValidCommand(command) {
         return $.type(command) === "string" &&
             command === "dispose" &&
             dnd()[command] !== undefined;
-    };
+    }
 
     function delegateCommand(command) {
         var xformedArgs = [], origArgs = Array.prototype.slice.call(arguments, 1);
         transformVariables(origArgs, xformedArgs);
         return dnd()[command].apply(dnd(), xformedArgs);
-    };
+    }
 
     $.fn.fineUploaderDnd = function(optionsOrCommand) {
         var self = this, selfArgs = arguments, retVals = [];
@@ -124,7 +123,7 @@
                     return false;
                 }
             }
-            else if (typeof optionsOrCommand === 'object' || !optionsOrCommand) {
+            else if (typeof optionsOrCommand === "object" || !optionsOrCommand) {
                 init.apply(self, selfArgs);
             }
             else {

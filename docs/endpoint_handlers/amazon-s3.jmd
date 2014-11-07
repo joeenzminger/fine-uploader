@@ -2,6 +2,9 @@
 {% set page_title = "S3 Endpoint" %}
 {% block content %}
 {% markdown %}
+
+[scaling]: ../features/scaling.html
+
 # S3 Server-Side Notes & Requirements {: .page-header }
 
 Using the direct-to-S3 uploader module means that most of the server-side work required to parse upload requests is
@@ -9,6 +12,10 @@ handled by Amazon for you.  However, there is some minimal communication require
 server.  This document will outline both required and optional server-side tasks.  Note that, at the writing of this
 document, Fine Uploader developers have provided fully functional [server-side examples](https://github.com/Widen/fine-uploader-server)
 in PHP, node.js, Python, and Java.  Other examples will be created in the future.
+
+{{ alert(
+"""[A comprehensive, step-by-step guide on implementing your origin server to
+handle S3 uploads can be found on the Fine Uploader blog](http://blog.fineuploader.com/2013/08/16/fine-uploader-s3-upload-directly-to-amazon-s3-from-your-browser)""")}}
 
 #### Creating your S3 bucket's CORS configuration
 In order to use the upload-to-S3 feature, you MUST properly set the CORS configuration in your S3 bucket(s).  Fine Uploader
@@ -40,15 +47,18 @@ will always need to include this.
 if you enable Fine Uploader's delete file feature.  It is also required if you enable the chunking feature, as Fine Uploader
 sends a DELETE request to S3 when a user cancels an in-progress upload in order to ensure S3 removes all chunks associated
 with that upload present in your bucket.
-* The ExposeHeader line is required only if you enable the chunking feature.
 * You can (and probably should) make the AllowedOrigin condition(s) a bit more restrictive.  If you know specifically what
 domains will host your Fine Uploader instance, include these in the AllowedOrigin tag value.
 * You can (and probably should) make the AllowedHeader condition(s) a bit more restrictive.  If you do, you will always
 need to allow the following headers: "origin" and "content-type".  If you have the chunking feature enabled, you will also
-need to include: "x-amz-acl", "x-amx-meta-qqfilename", "x-amz-date", and "authorization".  If you have chunking enabled,
+need to include: "x-amz-acl", "x-amz-meta-qqfilename", "x-amz-date", and "authorization".  If you have chunking enabled,
 you will also need to authorize headers for any custom parameters (user metadata) you want to attach to the object in S3.
 All parameters are sent as headers in the "Initiate Multipart Upload" request sent by Fine Uploader with a prefix of
 "x-amz-meta-".
+* If you are using the [scaling feature][scaling], and you have elected to have the original/parent image uploaded,
+you will need to account for these headers in your CORS configuration as well: "x-amz-meta-qquuid",
+"x-amz-meta-qqparentuuid", and "x-amz-meta-qqparentsize".
+
 
 ### Required server-side tasks: all browsers
 The only required server-side task for all browsers is an endpoint that signs the policy document.  This endpoint
@@ -113,10 +123,11 @@ will contain the following information:
 * Key name of the associated file in S3
 * UUID of the file
 * Name of the file
+* The ETag of the object in S3 (for non-chunked uploads only)
 
 An example of the payload for this request sent by Fine Uploader would look like this:
 
-`key=f9a922bd-3007-4393-a76e-925fc009639c.txt&uuid=f9a922bd-3007-4393-a76e-925fc009639c&name=rubycsv.txt&bucket=fineuploadertest`
+`key=f9a922bd-3007-4393-a76e-925fc009639c.txt&uuid=f9a922bd-3007-4393-a76e-925fc009639c&name=rubycsv.txt&bucket=fineuploadertest&etag=123`
 
 Parsing url-encoded payloads should be trivial and handled by most web application frameworks.
 
@@ -126,10 +137,33 @@ appropriate (non-200) status code.  Furthermore, you can include a message to be
 and passed to your `onError` callback handler via an `error` property in the payload of your response.  In this case,
 the response payload must be valid JSON.
 
-You can also pass any data to your Fine Uploader [`complete` event handler](../api/events.html), client-side,
+You can also pass any data to your Fine Uploader [`complete` event handler](../api/events#complete.html), client-side,
 by including it in a valid JSON response to the `uploadSuccess.endpoint` POST request.  In fact, the S3 demo server-side
 code on FineUploader.com is passing a signed URL to the `complete` handler which allows you to view the file you've
 uploaded.
+
+## Chunked Uploads
+Fine Uploader S3 uses [Amazon S3's REST API](http://docs.aws.amazon.com/AmazonS3/latest/API/APIRest.html)
+to initiate, upload, complete, and
+abort multipart uploads. The REST API handles authentication by signing
+canonically formatted headers. This signing is something you need to implement
+server-side. All your server needs to do to authenticate and supported chunked
+uploads direct to Amazon S3 is sign a string representing the headers of the
+request that Fine Uploader sends to S3. This string is found in the payload of
+the signature request:
+
+    { "headers": /* string to sign */ }
+
+The precense of this property indicates to your sever that this is, in fact,
+a request to sign a REST/multipart request and not a policy document.
+
+This signature for the headers string differs slightly from the policy document
+signature. You should **NOT** base64 encode the headers string before signing it.
+All you must do, server-side, is generate an HMAC SHA1 signature of the string
+using your AWS secret key and _then_ base64 encode the result. Your server
+should respond with the following in the body of an 'application/json' response:
+
+    { "signature": /* signed headers string */ }
 
 
 ## Delete File support
@@ -147,6 +181,14 @@ to set the `expected` property of the `cors` option when setting up your Fine Up
 appropriate headers in your server-response, and possibly handle OPTIONS (pre-flight) requests sent by the browser.  Please
 read the [blog post on CORS support](http://blog.fineuploader.com/2013/01/31/cors-support-in-3-3/) for details.  Note that
 you can ignore the "Handling iframe CORS upload requests server-side" section.
+
+## Thumbnails
+If you would like to override the client-side generated preview (where supported) or provide a thumbnail for a
+non-previewable file that you have generated server-side, you can do so by providing an absolute or relative path (URL)
+to this thumbnail in your response to the `uploadSuccess` request via a `thumbnailUrl` property in your JSON response.
+The URL may be cross-origin as well.  See the [previews/thumbnails feature page](../features/thumbnails.html)
+for more information on this feature.
+
 {% endmarkdown %}
 {% endblock %}
 

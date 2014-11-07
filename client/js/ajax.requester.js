@@ -1,52 +1,49 @@
+/*globals qq, XDomainRequest*/
 /** Generic class for sending non-upload ajax requests and handling the associated responses **/
-/*globals qq, XMLHttpRequest*/
-qq.AjaxRequestor = function (o) {
+qq.AjaxRequester = function(o) {
     "use strict";
 
     var log, shouldParamsBeInQueryString,
         queue = [],
-        requestData = [],
+        requestData = {},
         options = {
-            validMethods: ['POST'],
-            method: 'POST',
+            acceptHeader: null,
+            validMethods: ["POST"],
+            method: "POST",
             contentType: "application/x-www-form-urlencoded",
             maxConnections: 3,
             customHeaders: {},
             endpointStore: {},
             paramsStore: {},
             mandatedParams: {},
+            allowXRequestedWithAndCacheControl: true,
             successfulResponseCodes: {
-                "DELETE": [200, 202, 204],
-                "POST": [200, 204]
+                DELETE: [200, 202, 204],
+                POST: [200, 204],
+                GET: [200]
             },
             cors: {
                 expected: false,
                 sendCredentials: false
             },
-            log: function (str, level) {},
-            onSend: function (id) {},
-            onComplete: function (id, xhrOrXdr, isError) {},
-            onCancel: function (id) {}
+            log: function(str, level) {},
+            onSend: function(id) {},
+            onComplete: function(id, xhrOrXdr, isError) {},
+            onProgress: null
         };
 
     qq.extend(options, o);
     log = options.log;
 
-        // TODO remove code duplication among all ajax requesters
-    if (qq.indexOf(options.validMethods, getNormalizedMethod()) < 0) {
-        throw new Error("'" + getNormalizedMethod() + "' is not a supported method for this type of request!");
-    }
-
-    // TODO remove code duplication among all ajax requesters
-    function getNormalizedMethod() {
-        return options.method.toUpperCase();
+    if (qq.indexOf(options.validMethods, options.method) < 0) {
+        throw new Error("'" + options.method + "' is not a supported method for this type of request!");
     }
 
     // [Simple methods](http://www.w3.org/TR/cors/#simple-method)
     // are defined by the W3C in the CORS spec as a list of methods that, in part,
     // make a CORS request eligible to be exempt from preflighting.
     function isSimpleMethod() {
-        return qq.indexOf(["GET", "POST", "HEAD"], getNormalizedMethod()) >= 0;
+        return qq.indexOf(["GET", "POST", "HEAD"], options.method) >= 0;
     }
 
     // [Simple headers](http://www.w3.org/TR/cors/#simple-header)
@@ -86,15 +83,20 @@ qq.AjaxRequestor = function (o) {
     }
 
     // Returns either a new XHR/XDR instance, or an existing one for the associated `File` or `Blob`.
-    function getXhrOrXdr(id, dontCreateIfNotExist) {
+    function getXhrOrXdr(id, suppliedXhr) {
         var xhrOrXdr = requestData[id].xhr;
 
-        if (!xhrOrXdr && !dontCreateIfNotExist) {
-            if (options.cors.expected) {
-                xhrOrXdr = getCorsAjaxTransport();
+        if (!xhrOrXdr) {
+            if (suppliedXhr) {
+                xhrOrXdr = suppliedXhr;
             }
             else {
-                xhrOrXdr = qq.createXhrInstance();
+                if (options.cors.expected) {
+                    xhrOrXdr = getCorsAjaxTransport();
+                }
+                else {
+                    xhrOrXdr = qq.createXhrInstance();
+                }
             }
 
             requestData[id].xhr = xhrOrXdr;
@@ -120,7 +122,7 @@ qq.AjaxRequestor = function (o) {
 
     function onComplete(id, xdrError) {
         var xhr = getXhrOrXdr(id),
-            method = getNormalizedMethod(),
+            method = options.method,
             isError = xdrError === true;
 
         dequeue(id);
@@ -137,23 +139,23 @@ qq.AjaxRequestor = function (o) {
     }
 
     function getParams(id) {
-        var onDemandParams = requestData[id].onDemandParams,
+        var onDemandParams = requestData[id].additionalParams,
             mandatedParams = options.mandatedParams,
             params;
 
-        if (options.paramsStore.getParams) {
-            params = options.paramsStore.getParams(id);
+        if (options.paramsStore.get) {
+            params = options.paramsStore.get(id);
         }
 
         if (onDemandParams) {
-            qq.each(onDemandParams, function (name, val) {
+            qq.each(onDemandParams, function(name, val) {
                 params = params || {};
                 params[name] = val;
             });
         }
 
         if (mandatedParams) {
-            qq.each(mandatedParams, function (name, val) {
+            qq.each(mandatedParams, function(name, val) {
                 params = params || {};
                 params[name] = val;
             });
@@ -162,11 +164,11 @@ qq.AjaxRequestor = function (o) {
         return params;
     }
 
-    function sendRequest(id) {
-        var xhr = getXhrOrXdr(id),
-            method = getNormalizedMethod(),
+    function sendRequest(id, optXhr) {
+        var xhr = getXhrOrXdr(id, optXhr),
+            method = options.method,
             params = getParams(id),
-            body = requestData[id].body,
+            payload = requestData[id].payload,
             url;
 
         options.onSend(id);
@@ -182,6 +184,8 @@ qq.AjaxRequestor = function (o) {
             xhr.onreadystatechange = getXhrReadyStateChangeHandler(id);
         }
 
+        registerForUploadProgress(id);
+
         // The last parameter is assumed to be ignored if we are actually using `XDomainRequest`.
         xhr.open(method, url, true);
 
@@ -193,29 +197,32 @@ qq.AjaxRequestor = function (o) {
 
         setHeaders(id);
 
-        log('Sending ' + method + " request for " + id);
+        log("Sending " + method + " request for " + id);
 
-        if (body) {
-            xhr.send(body)
+        if (payload) {
+            xhr.send(payload);
         }
         else if (shouldParamsBeInQueryString || !params) {
             xhr.send();
         }
-        else if (params && options.contentType.toLowerCase().indexOf("application/x-www-form-urlencoded") >= 0) {
+        else if (params && options.contentType && options.contentType.toLowerCase().indexOf("application/x-www-form-urlencoded") >= 0) {
             xhr.send(qq.obj2url(params, ""));
         }
-        else if (params && options.contentType.toLowerCase().indexOf("application/json") >= 0) {
+        else if (params && options.contentType && options.contentType.toLowerCase().indexOf("application/json") >= 0) {
             xhr.send(JSON.stringify(params));
         }
         else {
             xhr.send(params);
         }
+
+        return xhr;
     }
 
     function createUrl(id, params) {
-        var endpoint = options.endpointStore.getEndpoint(id),
+        var endpoint = options.endpointStore.get(id),
             addToPath = requestData[id].addToPath;
 
+        /*jshint -W116,-W041 */
         if (addToPath != undefined) {
             endpoint += "/" + addToPath;
         }
@@ -231,120 +238,151 @@ qq.AjaxRequestor = function (o) {
     // Invoked by the UA to indicate a number of possible states that describe
     // a live `XMLHttpRequest` transport.
     function getXhrReadyStateChangeHandler(id) {
-        return function () {
+        return function() {
             if (getXhrOrXdr(id).readyState === 4) {
                 onComplete(id);
             }
         };
     }
 
+    function registerForUploadProgress(id) {
+        var onProgress = options.onProgress;
+
+        if (onProgress) {
+            getXhrOrXdr(id).upload.onprogress = function(e) {
+                if (e.lengthComputable) {
+                    onProgress(id, e.loaded, e.total);
+                }
+            };
+        }
+    }
+
     // This will be called by IE to indicate **success** for an associated
     // `XDomainRequest` transported request.
     function getXdrLoadHandler(id) {
-        return function () {
+        return function() {
             onComplete(id);
-        }
+        };
     }
 
     // This will be called by IE to indicate **failure** for an associated
     // `XDomainRequest` transported request.
     function getXdrErrorHandler(id) {
-        return function () {
+        return function() {
             onComplete(id, true);
-        }
+        };
     }
 
     function setHeaders(id) {
         var xhr = getXhrOrXdr(id),
             customHeaders = options.customHeaders,
             onDemandHeaders = requestData[id].additionalHeaders || {},
-            method = getNormalizedMethod(),
+            method = options.method,
             allHeaders = {};
 
-        // If this is a CORS request and a simple method with simple headers are used
-        // on an `XMLHttpRequest`, exclude these specific non-simple headers
-        // in an attempt to prevent preflighting.  `XDomainRequest` does not support setting
-        // request headers, so we will take this into account as well.
-        if (isXdr(xhr)) {
-            if (!options.cors.expected || (!isSimpleMethod() || containsNonSimpleHeaders(customHeaders))) {
-                xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-                xhr.setRequestHeader("Cache-Control", "no-cache");
-            }
-        }
-
-        // Note that we can't set the Content-Type when using this transport XDR, and it is
-        // not relevant unless we will be including the params in the payload.
-        if (options.contentType && (method === "POST" || method === "PUT") && !isXdr(xhr)) {
-            xhr.setRequestHeader("Content-Type", options.contentType);
-        }
-
-        // `XDomainRequest` doesn't allow you to set any headers.
+        // If XDomainRequest is being used, we can't set headers, so just ignore this block.
         if (!isXdr(xhr)) {
-            qq.extend(allHeaders, customHeaders);
+            options.acceptHeader && xhr.setRequestHeader("Accept", options.acceptHeader);
+
+            // Only attempt to add X-Requested-With & Cache-Control if permitted
+            if (options.allowXRequestedWithAndCacheControl) {
+                // Do not add X-Requested-With & Cache-Control if this is a cross-origin request
+                // OR the cross-origin request contains a non-simple method or header.
+                // This is done to ensure a preflight is not triggered exclusively based on the
+                // addition of these 2 non-simple headers.
+                if (!options.cors.expected || (!isSimpleMethod() || containsNonSimpleHeaders(customHeaders))) {
+                    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+                    xhr.setRequestHeader("Cache-Control", "no-cache");
+                }
+            }
+
+            if (options.contentType && (method === "POST" || method === "PUT")) {
+                xhr.setRequestHeader("Content-Type", options.contentType);
+            }
+
+            qq.extend(allHeaders, qq.isFunction(customHeaders) ? customHeaders(id) : customHeaders);
             qq.extend(allHeaders, onDemandHeaders);
 
-            qq.each(allHeaders, function (name, val) {
+            qq.each(allHeaders, function(name, val) {
                 xhr.setRequestHeader(name, val);
             });
         }
     }
 
-    function cancelRequest(id) {
-        var xhr = getXhrOrXdr(id, true),
-            method = getNormalizedMethod();
-
-        if (xhr) {
-            // The event handlers we remove/unregister is dependant on whether we are
-            // using `XDomainRequest` or `XMLHttpRequest`.
-            if (isXdr(xhr)) {
-                xhr.onerror = null;
-                xhr.onload = null;
-            }
-            else {
-                xhr.onreadystatechange = null;
-            }
-
-            xhr.abort();
-            dequeue(id);
-
-            log('Cancelled ' + method + " for " + id);
-            options.onCancel(id);
-
-            return true;
-        }
-
-        return false;
-    }
-
     function isResponseSuccessful(responseCode) {
-        return qq.indexOf(options.successfulResponseCodes[getNormalizedMethod()], responseCode) >= 0;
+        return qq.indexOf(options.successfulResponseCodes[options.method], responseCode) >= 0;
     }
 
-    shouldParamsBeInQueryString = getNormalizedMethod() === 'GET' || getNormalizedMethod() === 'DELETE';
+    function prepareToSend(id, optXhr, addToPath, additionalParams, additionalHeaders, payload) {
+        requestData[id] = {
+            addToPath: addToPath,
+            additionalParams: additionalParams,
+            additionalHeaders: additionalHeaders,
+            payload: payload
+        };
 
-    return {
-        send: function (id, addToPath, onDemandParams, onDemandHeaders, body) {
-            requestData[id] = {
-                addToPath: addToPath,
-                onDemandParams: onDemandParams,
-                additionalHeaders: onDemandHeaders,
-                body: body
-            };
+        var len = queue.push(id);
 
-            var len = queue.push(id);
-
-            // if too many active connections, wait...
-            if (len <= options.maxConnections) {
-                sendRequest(id);
-            }
-        },
-
-        cancel: function (id) {
-            return cancelRequest(id);
-        },
-
-        getMethod: function() {
-            return getNormalizedMethod();
+        // if too many active connections, wait...
+        if (len <= options.maxConnections) {
+            return sendRequest(id, optXhr);
         }
-    };
+    }
+
+    shouldParamsBeInQueryString = options.method === "GET" || options.method === "DELETE";
+
+    qq.extend(this, {
+        // Start the process of sending the request.  The ID refers to the file associated with the request.
+        initTransport: function(id) {
+            var path, params, headers, payload, cacheBuster;
+
+            return {
+                // Optionally specify the end of the endpoint path for the request.
+                withPath: function(appendToPath) {
+                    path = appendToPath;
+                    return this;
+                },
+
+                // Optionally specify additional parameters to send along with the request.
+                // These will be added to the query string for GET/DELETE requests or the payload
+                // for POST/PUT requests.  The Content-Type of the request will be used to determine
+                // how these parameters should be formatted as well.
+                withParams: function(additionalParams) {
+                    params = additionalParams;
+                    return this;
+                },
+
+                // Optionally specify additional headers to send along with the request.
+                withHeaders: function(additionalHeaders) {
+                    headers = additionalHeaders;
+                    return this;
+                },
+
+                // Optionally specify a payload/body for the request.
+                withPayload: function(thePayload) {
+                    payload = thePayload;
+                    return this;
+                },
+
+                // Appends a cache buster (timestamp) to the request URL as a query parameter (only if GET or DELETE)
+                withCacheBuster: function() {
+                    cacheBuster = true;
+                    return this;
+                },
+
+                // Send the constructed request.
+                send: function(optXhr) {
+                    if (cacheBuster && qq.indexOf(["GET", "DELETE"], options.method) >= 0) {
+                        params.qqtimestamp = new Date().getTime();
+                    }
+
+                    return prepareToSend(id, optXhr, path, params, headers, payload);
+                }
+            };
+        },
+
+        canceled: function(id) {
+            dequeue(id);
+        }
+    });
 };

@@ -1,5 +1,8 @@
 {% extends "_templates/base.html" %}
 {% set page_title = "Validation" %}
+{% block sidebar %}
+{{ api_links(options=['validation'], events=['submit', 'validate', 'validateBatch']) }}
+{% endblock %}
 {% block content %}
 {% markdown %}
 
@@ -8,67 +11,42 @@
 Fine Uploader's validation abilities allow integrators to strictly define
 what sorts of files can and can not be uploaded.
 
-### `validation` option
+For each file, the `validate` event callback is invoked, allowing you to enforce your own custom rules.  Then, Fine
+Uploader's built-in validators (defined in the options) execute.  If you need access to more information
+(such as the actual file), you can declare a `submit` event callback handler instead. When `submit` is called,
+an ID is available for the file, and you can address it using any of the other API methods that require a file ID.
 
-{{ options_table(
-    (
-        ("acceptFiles", "comma-separated Strings", "`null`", "Used by the file selection dialog. Restrict the valid file types that appear in the selection dialog by listing valid content-type specifiers here. See docs on the [accept attribute of the `<input>` element](https://developer.mozilla.org/en-USHTML/Element/Input)"),
-        ("allowedExtensions", "Array of Strings", "`[]`", "Specify file valid file extensions here to restrict uploads to specific types."),
-        ("itemLimit", "`Number`", "`0`", "Maximum number of items that can be potentially uploaded in this session. Will reject all items that are added or retried after this limit is reached."),
-        ("minSizeLimit", "`Number`", "`0`", "The minimum allowable size, in bytes, for an item."),
-        ("sizeLimit", "`Number`", "`0`", "The maximum allowable size, in bytes, for an item."),
-        ("stopOnFirstInvalidFile", "`Boolean`", "`true`", "When `true` the first invalid item will stop processing further files.")
-    )
-) }}
+If the `validation.stopOnFirstInvalidFile` option is enabled, Fine Uploader will stop processing files once an invalid
+file has been encountered.
 
-## Events
-{{ events_table(
-    (
-        ("validate", "`File` or `BlobData` fileOrBlobData", "Called once for each selection, dropped, or `addFiles`
-        submitted file and for each `addBlobs` submitted `Blob`. You may return false to prevent the file from being
-        submitted.  You may also return a [`qq.Promise`](async-tasks-and-promises.html)." ),
-        ("validateBatch", "`Array` fileOrBlobDataArray", "Called once for each batch of selected, dropped or `addFiles`
-        submitted files and for each `addBlobs` submitted `Blob`s. You may return false to prevent all files in the
-        batch from being submitted.  You may also return a [`qq.Promise`](async-tasks-and-promises.html)."),
-    )
-) }}
+Fine Uploader's built-in validators allow you to limit based on file extension, number of files, file size, and
+image dimensions.  See the `validation` option for more details about these built-in validators.
 
-The `validate` and `validateBatch` events are thrown/called before the default
-Fine Uploader validators (defined in the options) execute.
-
-If the `validation.stopOnFirstInvalidFile` option is enabled, then neither of
-these events will be thrown preceding a file being invalid (i.e., one of these
-callbacks returned `false`).
-
-Also note that a `BlobData` object has two properties:
-
-```javascript
-{
-    name: "", /* The name of the file or blob */
-    size: "", /* the size of the file or blob */
-}
-```
-
-## Validation on Name
-
-Until Fine Uploader is able to detect file mimetype client-side, validation
-on name is the best way to ensure that only the correct sorts of files get
-uploaded to your server.
-
-Validation on name can be controlled by modifying the `validation` settings,
-as documented above. The most important options are: `allowedExtensions` and
-`acceptFiles`.
-
-## Validation on Size
+## Validation on File Size
 
 Size validation is available in File API browsers only. Size can be restricted
 via the `sizeLimit` or `minSizeLimit` options in the `validation` settings.
 
-## Validation on Type
+## Image Validation
 
-Definitive validation on file type is not *yet* possible in Fine Uploader. However,
-client-side file identification is in the works for future releases.
+As of 4.1, the ability to restrict submitted images based on width and height is possible.  See the `validation.image`
+option for specifics.  Keep in mind that this feature was created with processed images in mind, and not images
+sent directly from a camera.  Some browsers may natively report width and height swapped for JPEGs (from cameras) based
+on the orientation of the camera.  Those uploading pictures directly from cameras have no control over the
+dimensions of the image, so it doesn't seem to make much sense to impose these restrictions if you expect your users
+to upload images directly via a camera.  In that case, it likely makes more sense to allow the user to scale the image
+first (before submitting the file) or simply impose a file size restriction.
 
+Also, this feature is dependant on the preview generation feature, and therefore is only supported in modern browsers.
+Check the browser support matrix or the `qq.supportedFeatures.imageValidation` flag for more specific information.
+If image dimension validation is important to your application, you will also need a server-side fallback to account
+for older browsers and TIFFs (if allowed, since TIFFs are only previewable in Safari).
+
+## Custom Validation Rules
+You can further limit files using your own custom rules by including validation logic in a `validate` or `validateBatch`
+callback event handler.  Your handlers can return `false` to reject the file or files outright.  If you need to perform an
+async operation to determine if the file is valid, you can return a promise, and either resolve or reject the promise
+once the validity of the file is known.  See the `validate` and `validateBatch` documentation for more details.
 
 {% endmarkdown %}
 {% endblock %}

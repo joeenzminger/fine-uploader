@@ -2,6 +2,9 @@
 {% set page_title = "Traditional Endpoint" %}
 {% block content %}
 {% markdown %}
+
+[chunking-success]: ../features/concurrent-chunking.html#server-side-implications
+
 # Traditional Uploader Server-Side Notes & Requirements {: .page-header }
 
 In the server folder you will find some examples for different platforms. If
@@ -68,12 +71,12 @@ along with each chunked request.  These parameters will be necessary to ensure y
 order Fine Uploader to restart with the first chunk on a failed attempt by returning a `reset` property in your server response
 (with a value of `true`).  This is only applicable if `autoRetry` or `manualRetry` is enabled.
 
-You should make use of the UUID parameter, passed with reach request, that uniquely identifies each file.  This may make it easier for you
+You should make use of the UUID parameter, passed with each request, that uniquely identifies each file.  This may make it easier for you
 to avoid collisions during accumulation of chunks between files with the same name.
 
 Some server-side examples have been updated to handle file chunking.
 
-For more complete details regarding the file chunking feature, along with code examples, please see [this blog post](http://blog.fineuploader.com/2013/01/01/resume-uploads-from-previous-sessions-in-3-2/).
+For more complete details regarding the file chunking feature, along with code examples, please see [this blog post](http://blog.fineuploader.com/2012/12/28/file-chunkingpartitioning-is-now-available-in-3-2/).
 on the topic.
 
 ## File Resume
@@ -82,7 +85,7 @@ section above.  You can determine if a resume has been ordered by looking for a 
 parameter will be sent with the first request of the resume.
 
 It is important that you keep chunks around on the server until either the entire file has been uploaded
-and all chunks have been merged, or until the number of days specified in the `cookiesExpireIn` property of the resume option have
+and all chunks have been merged, or until the number of days specified in the `recordsExpireIn` property of the resume option have
 passed.  If, for some reason, you receive a request that indicates a resume has been ordered, and one or more of the previously uploaded
 chunks is missing or invalid, you can return a valid JSON response containing a "reset" property with a value of "true".  This will
 let Fine Uploader know that it should start the file upload from the first chunk instead of the last failed chunk.
@@ -125,5 +128,18 @@ See the [values](#values) section above for an example.
 ## Handling an Overridden Filename
 Simple look for a "qqfilename" parameter.  If this exists in the request, be sure to use this when naming your file server-side.
 See the [blog post](http://blog.fineuploader.com/2013/06/23/3-7-edit-override-file-names/) for more details.
+
+## Thumbnails
+If you would like to override the client-side generated preview (where supported) or provide a thumbnail for a
+non-previewable file that you have generated server-side, you can do so by providing an absolute or relative path (URL)
+to this thumbnail in your response to the upload request via a `thumbnailUrl` property in your JSON response.  The
+URL may be cross-origin as well.  See the [previews/thumbnails feature page](../features/thumbnails.html) for more
+information on this feature.
+
+### POST when all chunks have successfully uploaded
+
+You may specify a `chunking.success.endpoint` if you'd like your server to be called when all chunks
+have been successfully uploaded. See the section on the [chunking success call][chunking-success] for more details.
+
 {% endmarkdown %}
 {% endblock %}
